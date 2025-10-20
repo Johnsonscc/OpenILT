@@ -1,7 +1,14 @@
 import sys
-sys.path.append(".")
-import time
+import os
 
+# 获取当前文件的绝对路径
+current_file = os.path.abspath(__file__)
+# 获取项目根目录（假设项目根目录是 OpenILT-main）
+project_root = os.path.dirname(os.path.dirname(current_file))
+# 添加到 Python 路径
+sys.path.insert(0, project_root)
+
+import time
 import cv2
 import numpy as np
 import torch
@@ -18,40 +25,57 @@ import pylitho.simple as lithosim
 import pyilt.initializer as initializer
 import pyilt.evaluation as evaluation
 
-class SimpleCfg: 
-    def __init__(self, config): 
+
+class SimpleCfg:
+    def __init__(self, config):
         # Read the config from file or a given dict
-        if isinstance(config, dict): 
+        if isinstance(config, dict):
             self._config = config
-        elif isinstance(config, str): 
+        elif isinstance(config, str):
             self._config = common.parseConfig(config)
-        required = ["Iterations", "TargetDensity", "SigmoidSteepness", "WeightEPE", "WeightPVBand", "WeightPVBL2", "StepSize", 
+        required = ["Iterations", "TargetDensity", "SigmoidSteepness", "WeightEPE", "WeightPVBand", "WeightPVBL2",
+                    "StepSize",
                     "TileSizeX", "TileSizeY", "OffsetX", "OffsetY", "ILTSizeX", "ILTSizeY"]
-        for key in required: 
+        for key in required:
             assert key in self._config, f"[SimpleILT]: Cannot find the config {key}."
         intfields = ["Iterations", "TileSizeX", "TileSizeY", "OffsetX", "OffsetY", "ILTSizeX", "ILTSizeY"]
-        for key in intfields: 
+        for key in intfields:
             self._config[key] = int(self._config[key])
         floatfields = ["TargetDensity", "SigmoidSteepness", "WeightEPE", "WeightPVBand", "WeightPVBL2", "StepSize"]
-        for key in floatfields: 
+        for key in floatfields:
             self._config[key] = float(self._config[key])
-    
-    def __getitem__(self, key): 
+
+    def __getitem__(self, key):
         return self._config[key]
 
-class SimpleILT: 
-    def __init__(self, config=SimpleCfg("./config/simpleilt2048.txt"), lithosim=lithosim.LithoSim("./config/lithosimple.txt"), device=DEVICE, multigpu=False): 
+
+class SimpleILT:
+    def __init__(self, config=None, lithosim=None, device=DEVICE, multigpu=False):
         super(SimpleILT, self).__init__()
+
+        # 设置默认配置
+        if config is None:
+            config = SimpleCfg("./config/simpleilt2048.txt")
         self._config = config
+
         self._device = device
+
+        # 设置默认 lithosim
+        if lithosim is None:
+            lithosim = lithosim.LithoSim("./config/lithosimple.txt")
+
         # Lithosim
         self._lithosim = lithosim.to(DEVICE)
-        if multigpu: 
+        if multigpu:
             self._lithosim = nn.DataParallel(self._lithosim)
+
         # Filter
-        self._filter = torch.zeros([self._config["TileSizeX"], self._config["TileSizeY"]], dtype=REALTYPE, device=self._device)
-        self._filter[self._config["OffsetX"]:self._config["OffsetX"]+self._config["ILTSizeX"], \
-                     self._config["OffsetY"]:self._config["OffsetY"]+self._config["ILTSizeY"]] = 1
+        self._filter = torch.zeros([self._config["TileSizeX"], self._config["TileSizeY"]], dtype=REALTYPE,
+                                   device=self._device)
+        self._filter[self._config["OffsetX"]:self._config["OffsetX"] + self._config["ILTSizeX"], \
+            self._config["OffsetY"]:self._config["OffsetY"] + self._config["ILTSizeY"]] = 1
+
+    # ... 其余代码保持不变
     
     def solve(self, target, params, curv=None, verbose=0): 
         # Initialize
